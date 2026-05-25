@@ -59,6 +59,7 @@ struct LexContext
     int token_start;
     int count;
     int i;
+    int j;
     LexState state;
     bool is_accumulate;
 };

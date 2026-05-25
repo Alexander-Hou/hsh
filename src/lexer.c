@@ -14,6 +14,7 @@ Token *tokenize(char *buf)
     ctx.capacity = HSH_TOKEN_BUF_SIZE;
     ctx.count = 0;
     ctx.i = 0;
+    ctx.j = 0;
     ctx.is_accumulate = false;
     ctx.state = STATE_NORMAL;
     ctx.tokens = (Token *)malloc(ctx.capacity * sizeof(Token));
@@ -124,7 +125,7 @@ Token *tokenize(char *buf)
                 {
                     fprintf(stderr, "hsh: syntax error near unexpected token '&'\n");
                     free(ctx.tokens);
-                    exit(EXIT_FAILURE);
+                    return NULL;
                 }
             }
             else if (ctx.buf[ctx.i] == '>')
@@ -167,6 +168,7 @@ Token *tokenize(char *buf)
     /*
         Add the end token to the token array.
     */
+    ensure_token_capacity(&ctx);
     ctx.tokens[ctx.count].type = TOKEN_END;
     ctx.tokens[ctx.count].value = NULL;
 
@@ -181,14 +183,12 @@ void accumulate_char(LexContext *ctx)
     */
     if (!ctx->is_accumulate)
     {
-        ctx->token_start = ctx->i;
+        ctx->token_start = ctx->j;
         ctx->is_accumulate = true;
-        ctx->i++;
     }
-    else
-    {
-        ctx->i++;
-    }
+    ctx->buf[ctx->j] = ctx->buf[ctx->i];
+    ctx->j++;
+    ctx->i++;
 }
 
 void ensure_token_capacity(LexContext *ctx)
@@ -212,7 +212,7 @@ void word_end_process(LexContext *ctx)
 {
     ensure_token_capacity(ctx);
 
-    ctx->buf[ctx->i] = '\0';
+    ctx->buf[ctx->j] = '\0';
     /*
         Add the token to the token array.
     */
