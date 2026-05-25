@@ -1,7 +1,12 @@
 /*
-    This header file defines some processing strategies
-    and practices required by the lexical analyzer.
+    lexer.h - Header file for the lexical analyzer of the hsh shell project.
+    This header file defines the necessary data structures and function declarations for the lexical analyzer of the hsh shell project. 
+    It includes the definition of token types, the token structure, and the lexical analysis context structure. 
+    Additionally, it declares the main function for tokenizing a command line string and several helper functions for processing different types of tokens.
 */
+
+#ifndef _LEXER_H_
+#define _LEXER_H_
 
 #define HSH_TOKEN_BUF_SIZE 8
 #include <stdbool.h>
@@ -79,3 +84,5 @@ void redir_append_process(LexContext *);  // Process a redirect append token, wh
 void and_process(LexContext *);           // Process an AND_IF token, which involves adding a TOKEN_AND_IF to the token array.
 void or_process(LexContext *);            // Process an OR_IF token, which involves adding a TOKEN_OR_IF to the token array.
 void seq_process(LexContext *);           // Process a SEQUENCE token, which involves adding a TOKEN_SEMICOLON to the token array.
+
+#endif
