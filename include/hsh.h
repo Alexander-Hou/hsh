@@ -8,20 +8,14 @@
 #ifndef _HSH_H_
 #define _HSH_H_
 
-#define HSH_READ_BUF_SIZE 1024
-
 #define ERR_OUT_OF_MEMORY  1
 #define ERR_PARSE_FAILED   2
 
 #include <setjmp.h>
 #include "lexer.h"
 #include "parser.h"
+#include "reader.h"
 
 extern jmp_buf err_jmp;
-
-/*
-    Function declarations.
-*/
-char *read_line(void); // Read a line of input from the user.
 
 #endif
