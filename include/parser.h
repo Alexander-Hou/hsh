@@ -1,3 +1,15 @@
+/*
+    parser.h - Header file for the parser component of the shell
+
+    This file defines the data structures and function prototypes for the parser,
+    which takes a list of tokens produced by the lexer and constructs an abstract
+    syntax tree (AST) representing the structure of the command line input.
+
+    The parser supports commands, pipelines, logical operators (&&, ||), and
+    command sequences separated by semicolons. It also handles command arguments
+    and redirections.
+*/
+
 #ifndef _PARSER_H_
 #define _PARSER_H_
 
@@ -66,15 +78,16 @@ typedef struct Parser Parser;
 /*
     Function prototypes for the parser
 */
-Node *parse(Token *);
-TokenType peek(Parser *);                     // Look at the current token without consuming it.
-Token advance(Parser *);                      // Consume the current token and return it.
-Token consume(Parser *, TokenType);            // Consume the current token if it matches the expected type, otherwise report an error.
-void ensure_argv_capacity(char ***argv, int* argc, int* capacity);  // Ensure that the argv array has enough capacity to hold additional arguments.
-void ensure_redir_capacity(Redir** redirs, int* redir_count, int* capacity); // Ensure that the redirs array has enough capacity to hold additional redirections.
-Node *parse_cmd(Parser *);            // Parse a command node.
-Node *parse_pipeline(Parser *);       // Parse a pipeline of commands.
-Node *parse_and_or(Parser *);         // Parse a sequence of commands connected by && or ||.
-Node *parse_sequence(Parser *);       // Parse a sequence of commands separated by ';'.
+Node *parse(Token *);                                                        // Parse the list of tokens and return the root of the abstract syntax tree.
+TokenType peek(Parser *);                                                    // Look at the current token without consuming it.
+Token advance(Parser *);                                                     // Consume the current token and return it.
+Token consume(Parser *, TokenType);                                          // Consume the current token if it matches the expected type, otherwise report an error.
+void ensure_argv_capacity(char ***argv, int *argc, int *capacity);           // Ensure that the argv array has enough capacity to hold additional arguments.
+void ensure_redir_capacity(Redir **redirs, int *redir_count, int *capacity); // Ensure that the redirs array has enough capacity to hold additional redirections.
+Node *parse_cmd(Parser *);                                                   // Parse a command node.
+Node *parse_pipeline(Parser *);                                              // Parse a pipeline of commands.
+Node *parse_and_or(Parser *);                                                // Parse a sequence of commands connected by && or ||.
+Node *parse_sequence(Parser *);                                              // Parse a sequence of commands separated by ';'.
+void free_tree(Node *);                                                      // Free the memory allocated for the abstract syntax tree.
 
 #endif

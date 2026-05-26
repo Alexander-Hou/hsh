@@ -124,6 +124,11 @@ Token *tokenize(char *buf)
                 else
                 {
                     fprintf(stderr, "hsh: syntax error near unexpected token '&'\n");
+                    for (int k = 0; k < ctx.count; k++)
+                    {
+                        free(ctx.tokens[k].value);
+                        ctx.tokens[k].value = NULL;
+                    }
                     free(ctx.tokens);
                     return NULL;
                 }

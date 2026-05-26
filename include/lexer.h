@@ -10,7 +10,6 @@
 
 #define HSH_TOKEN_BUF_SIZE 8
 #include <stdbool.h>
-#include "hsh.h"
 
 /*
     Lexical analysis states.
