@@ -77,7 +77,7 @@ static Token consume(Parser *p, TokenType expected)
     {
         parser_error(p, "Syntax error: unexpected token type.");
     }
-    return advance(p);
+    return take_token(p);
 }
 
 /*
