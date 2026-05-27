@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
 #include <unistd.h>
 #include <errno.h>
 #include "hsh.h"
@@ -11,49 +9,39 @@ char *read_line(void)
     char *line = NULL;
     size_t bufsize = 0;
     ssize_t ret;
+
     /*
-        Read a line of input from the user using getline, which automatically
-        allocates and resizes the buffer as needed. We need to handle several
-        cases here:
-        1. If getline returns -1, we need to check if it's due to EOF or an error.
-        2. If it's EOF, we should exit gracefully.
-        3. If it's an error, we need to check if it's due to an interrupt (EINTR) or an out-of-memory condition (ENOMEM).
-        4. For EINTR, we should clear the error and prompt the user again.
-        5. For ENOMEM, we should report the error and exit.
+        Read a line of input from the user,
+        handling interrupts and end-of-file conditions.
     */
     while (1)
     {
         ret = getline(&line, &bufsize, stdin);
-        
+
         if (ret == -1)
         {
-            if (feof(stdin))
+            if (feof(stdin)) // End of file (Ctrl+D)
             {
                 free(line);
                 if (isatty(STDIN_FILENO))
                 {
                     printf("\n");
                 }
-                exit(EXIT_SUCCESS); 
+                return NULL;
             }
-            
-            if (errno == EINTR)
+
+            if (errno == EINTR) // Interrupted by signal (e.g., Ctrl+C)
             {
                 clearerr(stdin);
-                
+
                 free(line);
                 line = NULL;
                 bufsize = 0;
-                
-                if (isatty(STDIN_FILENO))
-                {
-                    printf("\nhsh > ");
-                    fflush(stdout);
-                }
-                continue;
+
+                return NULL;
             }
 
-            if (errno == ENOMEM)
+            if (errno == ENOMEM) // Out of memory
             {
                 free(line);
                 fprintf(stderr, "hsh: fatal error: out of memory.\n");
