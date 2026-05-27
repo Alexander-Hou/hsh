@@ -15,6 +15,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "reader.h"
+#include "executor.h"
 
 extern jmp_buf err_jmp;
 
