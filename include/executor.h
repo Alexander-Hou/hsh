@@ -4,13 +4,16 @@
     It includes functions for executing individual commands, pipelines, logical operators, and sequences.
     The main entry point is the `execute` function, which dispatches to the appropriate execution function based on the type of AST node.
 */
-#ifndef _EXECUTOR_H_
-#define _EXECUTOR_H_
+#ifndef EXECUTOR_H
+#define EXECUTOR_H
 
+#define HSH_LIST_SIZE 4
+
+/*
+    Executes the abstract syntax tree representing a command or a sequence of commands.
+    It dispatches to specific execution functions based on the type of AST node (e.g., command, pipeline, AND/OR, sequence).
+    Returns the exit status of the executed command(s) or -1 on error.
+*/
 int execute(Node *ast);               // Main entry point for executing the AST
-int execute_cmd(Node *node);          // Executes a command node
-int execute_pipeline(Node *node);     // Executes a pipeline of commands
-int execute_and_or(Node *node);       // Executes logical AND (&&) and OR (||) nodes
-int execute_sequence(Node *node);     // Executes a sequence of commands separated by semicolons
 
 #endif
