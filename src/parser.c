@@ -4,40 +4,44 @@
 #include <setjmp.h>
 #include "hsh.h"
 
-Node *parse(Token *tokens)
+static void parser_error(Parser *p, const char *msg);
+static TokenType peek(Parser *p);
+static Token advance(Parser *p);
+static Token take_token(Parser *p);
+static Token consume(Parser *p, TokenType expected);
+static void ensure_argv_capacity(char ***argv, int *argc, int *capacity);
+static void ensure_redir_capacity(Redir **redirs, int *redir_count, int *capacity);
+static Node *parse_cmd(Parser *p);
+static Node *parse_pipeline(Parser *p);
+static Node *parse_and_or(Parser *p);
+static Node *parse_sequence(Parser *p);
+static void free_tokens_remaining(Token *tokens);
+static void free_cmd_parts(Parser *p);
+
+/*
+    Reports a parsing error, frees any allocated resources, and jumps back to the main loop.
+*/
+static void parser_error(Parser *p, const char *msg)
 {
+    fprintf(stderr, "hsh: %s\n", msg);
+    free_cmd_parts(p);
     /*
-        Initialize the parser with the token stream and
-        set the position to the beginning.
+        Free any partially constructed AST nodes.
     */
-    Parser p;
-    p.tokens = tokens;
-    p.pos = 0;
-
-    /*
-        Parse the token stream into an abstract syntax tree.
-    */
-    Node *root = parse_sequence(&p);
-
-    /*
-        After parsing, we should have consumed all tokens. If there are any
-        remaining tokens, it's a syntax error.
-    */
-    if (peek(&p) != TOKEN_END)
+    if (p->partial_root != NULL)
     {
-        fprintf(stderr, "hsh: syntax error.\n");
-        free_tree(root);
-        longjmp(err_jmp, ERR_PARSE_FAILED);
+        free_tree(p->partial_root);
+        p->partial_root = NULL;
     }
-
-    return root;
+    free_tokens_remaining(p->tokens);
+    longjmp(err_jmp, ERR_PARSE_FAILED);
 }
 
 /*
     Just a peek, to make a decision on what to parse next.
     There is no need to consume the token.
 */
-TokenType peek(Parser *p)
+static TokenType peek(Parser *p)
 {
     return p->tokens[p->pos].type;
 }
@@ -45,7 +49,7 @@ TokenType peek(Parser *p)
 /*
     Advance the parser to the next token and return the current token.
 */
-Token advance(Parser *p)
+static Token advance(Parser *p)
 {
     Token tmp = p->tokens[p->pos];
     p->pos++;
@@ -53,19 +57,34 @@ Token advance(Parser *p)
 }
 
 /*
+    Consume a token and return it. This is used when we want to take
+    ownership of the token's value and transfer it to the AST node.
+    The aim of this function is to avoid repeated free operations.
+*/
+static Token take_token(Parser *p)
+{
+    Token tmp = advance(p);
+    p->tokens[p->pos - 1].value = NULL; /* ownership moved to AST */
+    return tmp;
+}
+
+/*
     Consume a token of the expected type, or report a syntax error.
 */
-Token consume(Parser *p, TokenType expected)
+static Token consume(Parser *p, TokenType expected)
 {
     if (peek(p) != expected)
     {
-        fprintf(stderr, "hsh: syntax error.\n");
-        longjmp(err_jmp, ERR_PARSE_FAILED);
+        parser_error(p, "Syntax error: unexpected token type.");
     }
     return advance(p);
 }
 
-void ensure_argv_capacity(char ***argv, int *argc, int *capacity)
+/*
+    Ensure that the argv array has enough capacity to hold additional arguments.
+    If not, it doubles the capacity and reallocates the array.
+*/
+static void ensure_argv_capacity(char ***argv, int *argc, int *capacity)
 {
     if (*argc + 1 >= *capacity)
     {
@@ -81,7 +100,11 @@ void ensure_argv_capacity(char ***argv, int *argc, int *capacity)
     }
 }
 
-void ensure_redir_capacity(Redir **redirs, int *redir_count, int *capacity)
+/*
+    Ensure that the redirs array has enough capacity to hold additional redirections.
+    If not, it doubles the capacity and reallocates the array.
+*/
+static void ensure_redir_capacity(Redir **redirs, int *redir_count, int *capacity)
 {
     if (*redir_count + 1 >= *capacity)
     {
@@ -103,7 +126,7 @@ void ensure_redir_capacity(Redir **redirs, int *redir_count, int *capacity)
     I think this function is somewhat challenging,
     probably because the data is a bit complex.
 */
-Node *parse_cmd(Parser *p)
+static Node *parse_cmd(Parser *p)
 {
     /*
         Allocate memory for the argv array.
@@ -129,6 +152,16 @@ Node *parse_cmd(Parser *p)
     }
 
     /*
+        Set the current command parts in the parser for error handling.
+        If a parsing error occurs while parsing the command arguments or redirections,
+        we can free these resources in the parser_error function.
+    */
+    p->cur_argv = argv;
+    p->cur_argc = 0;
+    p->cur_redirs = redirs;
+    p->cur_redir_count = 0;
+
+    /*
         Parse the command arguments and redirections.
     */
     int argc = 0;
@@ -141,9 +174,10 @@ Node *parse_cmd(Parser *p)
         if (peek(p) == TOKEN_WORD)
         {
             ensure_argv_capacity(&argv, &argc, &argv_capacity);
-            Token tmp = advance(p);
+            Token tmp = take_token(p);
             argv[argc] = tmp.value;
             argc++;
+            p->cur_argc = argc;
         }
 
         /*
@@ -154,10 +188,11 @@ Node *parse_cmd(Parser *p)
             ensure_redir_capacity(&redirs, &redir_count, &redir_capacity);
             Redir *redir = &redirs[redir_count];
             redir->dir_type = peek(p);
-            advance(p); // Consume the redirection operator.
+            take_token(p); // Consume the redirection operator.
             Token filename_token = consume(p, TOKEN_WORD);
             redir->filename = filename_token.value;
             redir_count++;
+            p->cur_redir_count = redir_count;
         }
         else
         {
@@ -168,18 +203,17 @@ Node *parse_cmd(Parser *p)
     /*
         If we haven't parsed any command arguments or redirections, it's a syntax error.
     */
-    if (argc == 0)
+    if (argc == 0 && redir_count == 0)
     {
-        fprintf(stderr, "hsh: syntax error.\n");
-        free(argv);
-        free(redirs);
-        longjmp(err_jmp, ERR_PARSE_FAILED);
+        parser_error(p, "Syntax error: expected command or redirection.");
     }
 
     argv[argc] = NULL; // Null-terminate the argv array.
 
     /*
         Allocate memory for the command node and fill in the details.
+        The AST's command node takes ownership of the argv and redirs arrays,
+        so we set the parser's current command parts to NULL to avoid double free issues.
     */
     Node *cmd_node = (Node *)malloc(sizeof(Node));
     if (cmd_node == NULL)
@@ -196,12 +230,22 @@ Node *parse_cmd(Parser *p)
     redirs = NULL;
     cmd_node->redir_count = redir_count;
 
+    p->cur_argv = NULL; // Ownership of argv has been transferred to the AST node.
+    p->cur_argc = 0;
+    p->cur_redirs = NULL; // Ownership of redirs has been transferred to the AST node.
+    p->cur_redir_count = 0;
+
     return cmd_node;
 }
 
-Node *parse_pipeline(Parser *p)
+/*
+    Parse a pipeline of commands, which consists of one or
+    more command nodes connected by pipe operators.
+*/
+static Node *parse_pipeline(Parser *p)
 {
     Node *left = parse_cmd(p);
+    p->partial_root = left; // Save the partially constructed AST for cleanup in case of error.
     while (peek(p) == TOKEN_PIPE)
     {
         advance(p); // Consume the pipe operator.
@@ -215,12 +259,16 @@ Node *parse_pipeline(Parser *p)
         node->type = NODE_PIPE;
         node->left = left;
         node->right = right;
-        left = node; // The new node becomes the left operand for the next iteration.
+        left = node;            // The new node becomes the left operand for the next iteration.
+        p->partial_root = left; // Update the partially constructed AST for cleanup in case of error.
     }
     return left;
 }
 
-Node *parse_and_or(Parser *p)
+/*
+    Parse a sequence of commands connected by '&&' or '||' operators.
+*/
+static Node *parse_and_or(Parser *p)
 {
     Node *left = parse_pipeline(p);
     while (peek(p) == TOKEN_AND_IF || peek(p) == TOKEN_OR_IF)
@@ -237,12 +285,16 @@ Node *parse_and_or(Parser *p)
         node->type = type;
         node->left = left;
         node->right = right;
-        left = node; // The new node becomes the left operand for the next iteration.
+        left = node;            // The new node becomes the left operand for the next iteration.
+        p->partial_root = left; // Update the partially constructed AST for cleanup in case of error.
     }
     return left;
 }
 
-Node *parse_sequence(Parser *p)
+/*
+    Parse a sequence of commands separated by ';' operators.
+*/
+static Node *parse_sequence(Parser *p)
 {
     Node *left = parse_and_or(p);
     while (peek(p) == TOKEN_SEMICOLON)
@@ -262,9 +314,59 @@ Node *parse_sequence(Parser *p)
         node->type = NODE_SEQ;
         node->left = left;
         node->right = right;
-        left = node; // The new node becomes the left operand for the next iteration.
+        left = node;            // The new node becomes the left operand for the next iteration.
+        p->partial_root = left; // Update the partially constructed AST for cleanup in case of error.
     }
     return left;
+}
+
+/*
+    Frees any remaining tokens in the token stream.
+*/
+static void free_tokens_remaining(Token *tokens)
+{
+    if (tokens == NULL)
+    {
+        return;
+    }
+    for (int i = 0; tokens[i].type != TOKEN_END; i++)
+    {
+        free(tokens[i].value);
+        tokens[i].value = NULL;
+    }
+}
+
+/*
+    Frees the memory allocated for the current command arguments and redirections
+    in the parser. This is used to clean up resources in case of a parsing error.
+*/
+static void free_cmd_parts(Parser *p)
+{
+    /*
+        Free the current command arguments.
+    */
+    if (p->cur_argv)
+    {
+        for (int i = 0; i < p->cur_argc; i++)
+        {
+            free(p->cur_argv[i]);
+        }
+        free(p->cur_argv);
+        p->cur_argv = NULL;
+    }
+
+    /*
+        Free the current command redirections.
+    */
+    if (p->cur_redirs)
+    {
+        for (int i = 0; i < p->cur_redir_count; i++)
+        {
+            free(p->cur_redirs[i].filename);
+        }
+        free(p->cur_redirs);
+        p->cur_redirs = NULL;
+    }
 }
 
 /*
@@ -294,4 +396,40 @@ void free_tree(Node *node)
         free_tree(node->right);
     }
     free(node);
+}
+
+Node *parse(Token *tokens)
+{
+    /*
+        Initialize the parser with the token stream and
+        set the position to the beginning.
+    */
+    Parser p;
+    p.tokens = tokens;
+    p.pos = 0;
+    /*
+        Initialize the current command parts.
+    */
+    p.cur_argv = NULL;
+    p.cur_argc = 0;
+    p.cur_redirs = NULL;
+    p.cur_redir_count = 0;
+    p.partial_root = NULL;
+
+    /*
+        Parse the token stream into an abstract syntax tree.
+    */
+    Node *root = parse_sequence(&p);
+
+    /*
+        After parsing, we should have consumed all tokens. If there are any
+        remaining tokens, it's a syntax error.
+    */
+    if (peek(&p) != TOKEN_END)
+    {
+        p.partial_root = root; // Save the partially constructed AST for cleanup.
+        parser_error(&p, "Syntax error: unexpected token after end of command.");
+    }
+
+    return root;
 }
