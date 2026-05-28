@@ -23,6 +23,7 @@ Besides these four modules, my shell's memory management is rock-solid. Even wit
 
 ## Architecture Design
 
+```
 [User Input] 
      │
      ▼
@@ -47,6 +48,7 @@ Besides these four modules, my shell's memory management is rock-solid. Even wit
      │
      ▼
 [Memory reclamation]   ──► The main loop executes `cleanup_iteration` to release all heap resources for this iteration.
+```
 
 
 
